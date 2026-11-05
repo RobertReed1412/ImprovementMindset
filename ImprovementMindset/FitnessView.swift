@@ -18,6 +18,12 @@ struct FitnessContent: View {
     @State private var performedAt = Date()
     @State private var workoutNotes = ""
 
+    @State private var showingCoach = false
+
+    // Tap a workout to reveal its delete button; tapping that asks to confirm
+    @State private var selectedWorkoutID: UUID?
+    @State private var workoutToDelete: WorkoutEntry?
+
     var body: some View {
         List {
             Section("Calories today") {
@@ -68,13 +74,25 @@ struct FitnessContent: View {
                             .foregroundStyle(.secondary)
                     }
                     ForEach(workouts) { w in
-                        WorkoutRow(workout: w)
+                        WorkoutRow(workout: w,
+                                   isSelected: selectedWorkoutID == w.id,
+                                   onDelete: { workoutToDelete = w })
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.snappy) {
+                                    selectedWorkoutID = selectedWorkoutID == w.id ? nil : w.id
+                                }
+                            }
                     }
-                    .onDelete(perform: deleteWorkouts)
                 }
             }
             .navigationTitle("Fitness")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Ask Coach", systemImage: "bubble.left.and.text.bubble.right") {
+                        showingCoach = true
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: WorkoutCSVFile(csv: WorkoutExport.csv(workouts)),
                               preview: SharePreview("workouts.csv")) {
@@ -86,6 +104,18 @@ struct FitnessContent: View {
             .scrollContentBackground(.hidden)
             .nightBackground()
             .onAppear { calorieDay = DailyMaintenance.calorieDay(context: context) }
+            // Catch up on anything that failed to sync while offline
+            .task { await WorkoutSync.run(context: context) }
+            .sheet(isPresented: $showingCoach) { AskCoachView() }
+            .alert("Delete this workout?", isPresented: Binding(
+                get: { workoutToDelete != nil },
+                set: { if !$0 { workoutToDelete = nil } }
+            ), presenting: workoutToDelete) { workout in
+                Button("Delete", role: .destructive) { delete(workout) }
+                Button("Cancel", role: .cancel) {}
+            } message: { workout in
+                Text("\(workout.type?.label ?? "Unspecified") on \(workout.performedAt.formatted(date: .abbreviated, time: .shortened)) will be removed. This can't be undone.")
+            }
     }
 
     private func addCals() {
@@ -112,18 +142,39 @@ struct FitnessContent: View {
         performedAt = Date()
         workoutNotes = ""
         try? context.save()
+        Task { await WorkoutSync.run(context: context) }
     }
 
-    private func deleteWorkouts(at offsets: IndexSet) {
-        for i in offsets { context.delete(workouts[i]) }
+    private func delete(_ workout: WorkoutEntry) {
+        WorkoutSync.markDeleted(workout.id)
+        context.delete(workout)
+        selectedWorkoutID = nil
+        workoutToDelete = nil
         try? context.save()
+        Task { await WorkoutSync.run(context: context) }
     }
 }
 
 private struct WorkoutRow: View {
     let workout: WorkoutEntry
+    let isSelected: Bool
+    let onDelete: () -> Void
 
     var body: some View {
+        HStack(spacing: 12) {
+            details
+            if isSelected {
+                Button("Delete workout", systemImage: "xmark.circle.fill", action: onDelete)
+                    .labelStyle(.iconOnly)
+                    .font(.title2)
+                    .foregroundStyle(Theme.Palette.oxbloodBright)
+                    .buttonStyle(.borderless)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+    }
+
+    private var details: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 if let type = workout.type {

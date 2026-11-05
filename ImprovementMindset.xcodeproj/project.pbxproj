@@ -30,6 +30,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		802A6DFC3097FF5200BD52D2 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		8092BCA53050EC090025FFA8 /* ImprovementMindset.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ImprovementMindset.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8092BCB23050EC0C0025FFA8 /* ImprovementMindsetTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ImprovementMindsetTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8092BCBC3050EC0C0025FFA8 /* ImprovementMindsetUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ImprovementMindsetUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -97,6 +98,7 @@
 		8092BC9C3050EC090025FFA8 = {
 			isa = PBXGroup;
 			children = (
+				802A6DFC3097FF5200BD52D2 /* Secrets.xcconfig */,
 				8092BCA73050EC090025FFA8 /* ImprovementMindset */,
 				8092BCB53050EC0C0025FFA8 /* ImprovementMindsetTests */,
 				8092BCBF3050EC0C0025FFA8 /* ImprovementMindsetUITests */,
@@ -299,6 +301,7 @@
 /* Begin XCBuildConfiguration section */
 		8092BCC43050EC0C0025FFA8 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 802A6DFC3097FF5200BD52D2 /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -362,6 +365,7 @@
 		};
 		8092BCC53050EC0C0025FFA8 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 802A6DFC3097FF5200BD52D2 /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -430,6 +434,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ImprovementMindset/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "The Improvement Mindset";
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Take photos of your books and creations";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Choose photos of your books and creations";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -478,6 +483,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ImprovementMindset/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "The Improvement Mindset";
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Take photos of your books and creations";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Choose photos of your books and creations";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
