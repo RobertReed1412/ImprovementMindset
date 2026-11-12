@@ -45,45 +45,88 @@ private struct Flash: View {
 
 struct QuickTaskWidget: View {
     @Environment(\.modelContext) private var context
-    @State private var title = ""
+    @State private var draft = TaskDraft()
+    @State private var expanded = false
     @State private var flash: String?
     @FocusState private var focused: Bool
-
-    private var trimmed: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
         WidgetCard(title: "Quick Task", symbol: "checklist") {
             HStack {
-                TextField("Add a task…", text: $title)
+                TextField("Add a task…", text: $draft.title)
                     .textFieldStyle(.roundedBorder)
                     .submitLabel(.done)
                     .focused($focused)
                     .onSubmit(add)
                     .accessibilityIdentifier("quickTask.field")
+                // Dropdown: all the full-task fields, right in the widget.
+                Button {
+                    withAnimation(Motion.select) { expanded.toggle() }
+                } label: {
+                    Image(systemName: expanded ? "chevron.up.circle" : "chevron.down.circle")
+                        .font(.title2).foregroundStyle(Theme.Palette.gold)
+                }
+                .accessibilityLabel(expanded ? "Hide task options" : "Show task options")
+                .accessibilityIdentifier("quickTask.options")
                 Button(action: add) {
                     Image(systemName: "plus.circle.fill").font(.title2)
                         .foregroundStyle(Theme.Palette.gold)
                 }
-                .disabled(trimmed.isEmpty)
+                .disabled(draft.trimmedTitle.isEmpty)
                 .accessibilityLabel("Add task")
                 .accessibilityIdentifier("quickTask.add")
             }
+
+            if expanded { options }
             Flash(text: flash)
         }
     }
 
-    /// Quick-added tasks are one-time tasks with the same defaults as the
-    /// full Add Task form (15 min, medium, importance 1).
+    private var options: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Type", selection: $draft.kind) {
+                Text("One-time").tag(TaskKind.oneTime)
+                Text("Daily").tag(TaskKind.daily)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("quickTask.kind")
+
+            Stepper("Time: \(draft.minutes) min", value: $draft.minutes, in: 5...600, step: 5)
+                .accessibilityIdentifier("quickTask.minutes")
+
+            Picker("Difficulty", selection: $draft.difficulty) {
+                ForEach(Difficulty.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+
+            Toggle("Anytime", isOn: $draft.anytime)
+            if !draft.anytime {
+                DatePicker("Must be done by", selection: $draft.dueTime, displayedComponents: .hourAndMinute)
+            }
+
+            Stepper("Importance: \(draft.importance)", value: $draft.importance, in: 1...99)
+
+            Label("+\(draft.formulaXP) XP", systemImage: "star.fill")
+                .font(.caption).foregroundStyle(Theme.Palette.goldBright)
+        }
+        .foregroundStyle(Theme.Palette.bone)
+        .tint(Theme.Palette.gold)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    /// Without opening the dropdown this is still a one-tap add with the
+    /// usual defaults (one-time, 15 min, medium, importance 1).
     private func add() {
-        guard !trimmed.isEmpty else { return }
-        let xp = LocalXPService.heuristicXP(difficulty: .medium, timeEstimateMinutes: 15, importance: 1)
-        let task = TaskItem(title: trimmed, kind: .oneTime, xp: xp)
+        guard !draft.trimmedTitle.isEmpty else { return }
+        let task = draft.makeTask(xp: draft.formulaXP)
         context.insert(task)
         ActivityLog.task(.taskCreated, task, extra: ["source": "home_widget"], in: context)
         try? context.save()
-        title = ""
+        let where_ = draft.kind == .daily ? "Daily" : "Tasks"
+        draft = TaskDraft()
         focused = false
-        show("Added to Tasks")
+        withAnimation(Motion.select) { expanded = false }
+        show("Added to \(where_)")
     }
 
     private func show(_ text: String) {
