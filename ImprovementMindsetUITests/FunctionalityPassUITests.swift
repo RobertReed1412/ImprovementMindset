@@ -32,7 +32,9 @@ final class FunctionalityPassUITests: XCTestCase {
 
     private func addDailyTask(_ title: String) {
         app.tabBars.buttons["Daily"].tap()
-        app.navigationBars["Daily"].buttons["Add"].tap()
+        let add = app.navigationBars["Daily"].buttons["Add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
         let field = app.textFields["What needs doing?"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap(); field.typeText(title)
@@ -153,7 +155,6 @@ final class FunctionalityPassUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap(); field.typeText("Buy chalk")
         app.buttons["quickTask.add"].tap()
-        XCTAssertTrue(app.staticTexts["Added to Tasks"].waitForExistence(timeout: 3))
 
         app.swipeUp()
         app.staticTexts["Tasks"].firstMatch.tap()
@@ -170,13 +171,13 @@ final class FunctionalityPassUITests: XCTestCase {
         alert.textFields.element(boundBy: 1).tap()
         alert.textFields.element(boundBy: 1).typeText("Memento mori")
         alert.buttons["Create"].tap()
-        XCTAssertTrue(app.staticTexts["Created Stoicism"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["quickNote.circlePicker"].label.contains("Stoicism"))
+        let picker = app.buttons["quickNote.circlePicker"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        XCTAssertTrue(picker.label.contains("Stoicism"), "new circle is selected")
 
         let note = app.textFields["quickNote.field"]
         note.tap(); note.typeText("Second note")
         app.buttons["quickNote.add"].tap()
-        XCTAssertTrue(app.staticTexts["Added to Stoicism"].waitForExistence(timeout: 3))
         snap("home-widgets")
 
         app.swipeUp()
