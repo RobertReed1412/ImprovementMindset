@@ -33,36 +33,80 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
 
 struct HomeView: View {
     @Query private var profiles: [PlayerProfile]
+    @Query private var layouts: [HomeLayoutRecord]
     @Environment(\.modelContext) private var context
 
-    private let tiles: [AppSection] = [
-        .calendar, .oneTime, .fitness, .goals,
-        .library, .creations, .circles, .rules
-    ]
     private let columns = [GridItem(.flexible(), spacing: 16),
                            GridItem(.flexible(), spacing: 16)]
+
+    /// Layout chunks: single sections, or runs of shortcuts grouped into one grid.
+    private enum Block: Identifiable {
+        case single(HomeSection)
+        case grid([AppSection])
+        var id: String {
+            switch self {
+            case .single(let s): return s.id
+            case .grid(let a): return "grid." + a.map(\.rawValue).joined(separator: ",")
+            }
+        }
+    }
+
+    private var blocks: [Block] {
+        let sections = layouts.first?.sections ?? HomeSection.defaults
+        var out: [Block] = []
+        var run: [AppSection] = []
+        for section in sections {
+            if case .shortcut(let app) = section.kind { run.append(app); continue }
+            if !run.isEmpty { out.append(.grid(run)); run = [] }
+            out.append(.single(section))
+        }
+        if !run.isEmpty { out.append(.grid(run)) }
+        return out
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                crownHeader
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(tiles) { section in
-                        NavigationLink(value: section) {
-                            DashboardTile(section: section)
+                if blocks.isEmpty {
+                    ContentUnavailableView(
+                        "Your home page is empty",
+                        systemImage: "square.grid.2x2",
+                        description: Text("Add sections in Settings → Edit home page."))
+                        .padding(.top, 60)
+                }
+                ForEach(blocks) { block in
+                    switch block {
+                    case .single(let section): single(section)
+                    case .grid(let apps):
+                        LazyVGrid(columns: columns, spacing: 16) {
+                            ForEach(apps) { app in
+                                NavigationLink(value: app) { DashboardTile(section: app) }
+                                    .buttonStyle(.plain)
+                            }
                         }
-                        .buttonStyle(.plain)
+                        .padding()
                     }
                 }
-                .padding()
             }
             .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
             .nightBackground()
             .navigationTitle("The Improvement Mindset")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: AppSection.self) { section in
                 destination(for: section)
             }
+            .onAppear { _ = HomeLayoutStore.layout(context: context) }
+        }
+    }
+
+    @ViewBuilder
+    private func single(_ section: HomeSection) -> some View {
+        switch section.kind {
+        case .levelHeader: crownHeader
+        case .taskWidget: QuickTaskWidget().padding(.horizontal).padding(.top, 12)
+        case .notesWidget: QuickNoteWidget().padding(.horizontal).padding(.top, 12)
+        case .shortcut: EmptyView()   // rendered inside grids
         }
     }
 
