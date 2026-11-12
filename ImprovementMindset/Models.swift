@@ -379,6 +379,13 @@ final class CalendarEvent {
         }
     }
 
+    /// This event's start time placed on `day` (for recurring occurrences).
+    func occurrenceStart(on day: Date) -> Date? {
+        let cal = Calendar.current
+        let t = cal.dateComponents([.hour, .minute], from: startDate)
+        return cal.date(bySettingHour: t.hour ?? 0, minute: t.minute ?? 0, second: 0, of: day)
+    }
+
     var timeLabel: String {
         let f = DateFormatter()
         f.dateFormat = "h:mm a"
