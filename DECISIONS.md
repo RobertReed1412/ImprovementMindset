@@ -112,15 +112,49 @@ importance) so they fit at half width.
 
 **Completed cards show the `SealCrest` logo image** (the same file as the launch screen).
 
-**One-time tasks are no longer deleted when completed.** They move to Completed and
-stay visible for 7 days, then drop off the screen while staying saved.
-Alternatives: keep deleting (then there's nothing to show in Completed); show
-forever (the column grows endlessly).
-Why: the column needs them, and the AI needs completion history.
+**Tap a To Do task → "Finished" or "Done for now"** (update 2, replaces plain tap-to-toggle).
+- **Finished:** earns XP and moves to Completed. At midnight finished one-time tasks
+  are **deleted** (you asked for a daily clear). Their history stays in the
+  activity log, so the AI loses nothing. Daily tasks aren't deleted; they reset
+  to To Do as before.
+- **Done for now** (multi-day work): moves to Completed today and comes back to
+  To Do tomorrow at the **same importance**. That day isn't logged as missed. It
+  **earns no XP**; XP comes when it's Finished, so pausing can't be farmed for XP.
+  It's logged as `task_done_for_now`, which tells the coach you worked on it.
+- **Tapping something in Completed undoes it** (finished XP is taken back).
+- **Midnight timing:** cleanup runs at the actual midnight if the app is open (a
+  timer), otherwise on the next open. The Completed column only shows today's items
+  either way, so it always looks right.
+Alternative considered: keep finished tasks visible for 7 days (my first version).
+Replaced because you asked for a daily clear.
 
-**Un-completing a task takes its XP back.** Otherwise tapping back and forth farms XP.
+**Edit any task: long-press → Edit / Add subtask / Delete.**
+Alternatives: an edit button on every card; tap to edit.
+Why: tap now opens the Finished / Done-for-now choice, and the columns are too
+narrow for extra buttons. Editing uses the same full form, pre-filled.
+Editing a **finished** task keeps its XP as already awarded. Editing an unfinished
+task re-scores XP if time, difficulty or importance changed. The importance
+range in the form went from 1–10 to 1–99, since escalated tasks can pass 10.
 
-**Delete moved to long-press → Delete** (the old swipe was a List feature; columns aren't a List).
+**Subtasks: up to 3 levels under a root task, the same fields as any task.**
+- They show inside the root's card, indented by level, and **never change column**.
+  Finishing a subtask puts the seal on it in place.
+- When the **root** moves columns, its subtasks move with it (they're part of its card).
+- Subtasks always share the root's type (daily or one-time). Changing the root's
+  type changes theirs.
+- A finished subtask is **not** cleared at midnight on its own, because that would
+  detach it from its root. It goes when the root is deleted or cleared.
+- Deleting a root deletes its subtasks.
+- Data model: an optional `parent` link on `TaskItem`. That's additive, and
+  **verified** by installing over a `main`-built database: the old task survived
+  and accepted a subtask.
+
+**Quick Task widget dropdown** (chevron next to +): type, time, difficulty, due
+time, importance, and a live XP preview, all inside the widget. Without opening
+it, + still adds with the defaults (one-time, 15 min, medium, importance 1).
+The task goes to Daily or Tasks depending on the type picked.
+Alternative: the chevron opens the full form as a sheet. I picked inline because
+"drop down" suggested it.
 
 ### Calendar items in tasks (feature 4)
 
@@ -153,13 +187,14 @@ Simplest reading of the spec. A lead-time setting is an easy follow-up.
 
 ### Verification
 
-- 6 unit tests (calendar items disappear after end, sorting, recurring reminders,
-  missed-task logging and the escalation fix, event metadata, layout defaults and
-  unknown ids)
-- 7 UI tests driving the real app in the iPhone 17 Pro simulator (columns toggle +
-  seal, calendar item on top + permission + real notification, remove/re-add a home
-  section, layout persists across relaunch, both widgets, goal slider)
-- All 13 pass.
+- 13 unit tests: calendar items, reminders, missed-task logging, the escalation
+  fix, midnight clearing (subtasks of unfinished roots kept), done-for-now
+  returning at the same importance, XP on finish/undo, the subtask depth limit
+  and cascade delete, root type changes, layout.
+- 10 UI tests driving the real app in the iPhone 17 Pro simulator: Finished and
+  Done for now, editing, 3-level subtasks staying with their root, the widget
+  dropdown, the calendar item + permission + a real notification, home layout,
+  both widgets, the goal slider.
 
 ---
 
