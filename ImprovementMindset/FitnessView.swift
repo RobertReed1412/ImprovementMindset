@@ -135,8 +135,13 @@ struct FitnessContent: View {
     private func logWorkout() {
         guard let type = workoutType else { return }
         let notes = workoutNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-        context.insert(WorkoutEntry(type: type, durationMinutes: durationMinutes,
-                                    notes: notes, performedAt: performedAt))
+        let entry = WorkoutEntry(type: type, durationMinutes: durationMinutes,
+                                 notes: notes, performedAt: performedAt)
+        context.insert(entry)
+        ActivityLog.record(.workoutLogged, area: .fitness, entityID: entry.id,
+                           title: type.label, value: Double(durationMinutes),
+                           at: performedAt, metadata: ["workout_type": type.rawValue],
+                           in: context)
         workoutType = nil
         durationMinutes = 30
         performedAt = Date()

@@ -25,14 +25,7 @@ enum PreviewData {
     static let container: ModelContainer = {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try! ModelContainer(
-            for: TaskItem.self, PlayerProfile.self,
-            CalorieDay.self, WorkoutEntry.self,
-            ShelfItem.self,
-            Circle.self, CircleCard.self,
-            Strike.self, RulesConfig.self,
-            Goal.self, GoalMove.self,
-            CalendarEvent.self,
-            configurations: config)
+            for: Schema(AppSchema.models), configurations: config)
         seed(container.mainContext)
         return container
     }()

@@ -1,20 +1,23 @@
 import SwiftUI
 import SwiftData
 
+/// Launch flags. UI tests pass `-uiTesting` for a clean in-memory store
+/// and no splash delay.
+enum AppLaunch {
+    static let isUITesting = CommandLine.arguments.contains("-uiTesting")
+}
+
 @main
 struct ImprovementMindsetApp: App {
     let container: ModelContainer
 
     init() {
         do {
-            container = try ModelContainer(
-                for: TaskItem.self, PlayerProfile.self,
-                CalorieDay.self, WorkoutEntry.self,
-                ShelfItem.self,
-                Circle.self, CircleCard.self,
-                Strike.self, RulesConfig.self,
-                Goal.self, GoalMove.self,
-                CalendarEvent.self)
+            // `-uiTesting` (passed only by the UI tests) uses a throwaway
+            // in-memory store so tests never touch real data.
+            let config = ModelConfiguration(isStoredInMemoryOnly: AppLaunch.isUITesting)
+            container = try ModelContainer(for: Schema(AppSchema.models),
+                                           configurations: config)
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
@@ -61,7 +64,7 @@ struct ImprovementMindsetApp: App {
 struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
-    @State private var showLaunch = true
+    @State private var showLaunch = !AppLaunch.isUITesting
 
     var body: some View {
         ZStack {

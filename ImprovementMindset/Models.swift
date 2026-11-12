@@ -49,6 +49,10 @@ final class TaskItem {
     var lastResetDay: Date
     var lastEscalationDay: Date
 
+    // When it was last checked off (nil = not done). Added in the
+    // functionality pass; optional so existing rows migrate untouched.
+    var completedAt: Date?
+
     init(title: String,
          kind: TaskKind,
          timeEstimateMinutes: Int = 15,
@@ -280,6 +284,8 @@ final class Goal {
     var createdAt: Date
     var isAccomplished: Bool
     var accomplishedDate: Date?
+    // 0...1 progress slider. Default keeps existing goals migrating cleanly.
+    var progress: Double = 0
     @Relationship(deleteRule: .cascade, inverse: \GoalMove.goal)
     var moves: [GoalMove]
     init(title: String) {

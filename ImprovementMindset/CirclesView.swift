@@ -63,7 +63,10 @@ struct CirclesContent: View {
     private func create() {
         let label = newLabel.trimmingCharacters(in: .whitespaces)
         guard !label.isEmpty else { return }
-        context.insert(Circle(label: label))
+        let circle = Circle(label: label)
+        context.insert(circle)
+        ActivityLog.record(.circleCreated, area: .circles, entityID: circle.id,
+                           title: label, in: context)
         newLabel = ""
         try? context.save()
     }
@@ -154,6 +157,10 @@ struct CircleDeckView: View {
         card.circle = circle
         circle.cards.append(card)
         context.insert(card)
+        ActivityLog.record(.noteAdded, area: .circles, entityID: card.id,
+                           title: circle.label,
+                           metadata: ["circle_id": circle.id.uuidString, "source": "circle_deck"],
+                           in: context)
         try? context.save()
         selection = cards.count - 1
     }

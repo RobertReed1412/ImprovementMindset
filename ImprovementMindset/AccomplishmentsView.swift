@@ -65,7 +65,10 @@ struct AccomplishmentsContent: View {
     private func add() {
         let title = newTitle.trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty else { return }
-        context.insert(Goal(title: title))
+        let goal = Goal(title: title)
+        context.insert(goal)
+        ActivityLog.record(.goalCreated, area: .goals, entityID: goal.id,
+                           title: title, in: context)
         newTitle = ""
         try? context.save()
     }
@@ -80,6 +83,7 @@ struct GoalDetailView: View {
     @Bindable var goal: Goal
     @Environment(\.modelContext) private var context
     @State private var newMove = ""
+    @State private var sliderStart: Double = 0
 
     private var moves: [GoalMove] {
         goal.moves.sorted { $0.createdAt < $1.createdAt }
@@ -100,6 +104,21 @@ struct GoalDetailView: View {
                         }
                     }
                     Spacer()
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Progress")
+                        Spacer()
+                        Text("\(Int((goal.progress * 100).rounded()))%")
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("goal.progressLabel")
+                    }
+                    Slider(value: $goal.progress, in: 0...1, step: 0.05) { editing in
+                        if editing { sliderStart = goal.progress } else { sliderReleased() }
+                    }
+                    .tint(Theme.Palette.gold)
+                    .accessibilityIdentifier("goal.progressSlider")
                 }
 
                 Button {
@@ -154,13 +173,28 @@ struct GoalDetailView: View {
         move.goal = goal
         goal.moves.append(move)
         context.insert(move)
+        ActivityLog.record(.goalMoveAdded, area: .goals, entityID: goal.id,
+                           title: goal.title, metadata: ["move": text], in: context)
         newMove = ""
+        try? context.save()
+    }
+
+    private func sliderReleased() {
+        guard abs(goal.progress - sliderStart) > 0.001 else { return }
+        ActivityLog.record(.goalSliderChanged, area: .goals, entityID: goal.id,
+                           title: goal.title, value: goal.progress,
+                           metadata: ["previous": String(format: "%.2f", sliderStart)],
+                           in: context)
         try? context.save()
     }
 
     private func toggleAccomplished() {
         goal.isAccomplished.toggle()
         goal.accomplishedDate = goal.isAccomplished ? Date() : nil
+        if goal.isAccomplished {
+            ActivityLog.record(.goalAccomplished, area: .goals, entityID: goal.id,
+                               title: goal.title, in: context)
+        }
         try? context.save()
     }
 

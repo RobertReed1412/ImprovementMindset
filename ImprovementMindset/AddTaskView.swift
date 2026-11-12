@@ -109,6 +109,7 @@ struct AddTaskView: View {
             dueClockMinutes: dueClockMinutes(),
             importance: importance, xp: xp)
         context.insert(task)
+        ActivityLog.task(.taskCreated, task, in: context)
         try? context.save()
         dismiss()
     }
