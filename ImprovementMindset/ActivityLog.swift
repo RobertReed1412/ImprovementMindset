@@ -22,6 +22,8 @@ enum ActivityType: String, Codable, CaseIterable {
     case taskUncompleted     = "task_uncompleted"
     case taskMissed          = "task_missed"
     case taskDeleted         = "task_deleted"
+    case taskDoneForNow      = "task_done_for_now"
+    case taskEdited          = "task_edited"
     case noteAdded           = "note_added"
     case circleCreated       = "circle_created"
     case goalCreated         = "goal_created"
@@ -106,6 +108,10 @@ enum ActivityLog {
             "xp": String(task.xp),
         ]
         if let due = task.dueClockMinutes { m["due_clock_minutes"] = String(due) }
+        if let parent = task.parent {
+            m["parent_id"] = parent.id.uuidString
+            m["depth"] = String(task.depth)
+        }
         return m
     }
 

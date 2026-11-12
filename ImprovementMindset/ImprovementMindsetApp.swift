@@ -104,6 +104,7 @@ struct RootView: View {
         }
         .tint(Theme.Palette.gold)
         .preferredColorScheme(.dark)
+        .task { await DailyMaintenance.midnightLoop(context: context) }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 DailyMaintenance.run(context: context)

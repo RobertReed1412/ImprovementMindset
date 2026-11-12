@@ -1,116 +1,165 @@
 import SwiftUI
 import SwiftData
 
+/// The full task form. One screen for: a new task, a new subtask, or editing
+/// any existing task / subtask.
 struct AddTaskView: View {
-    let kind: TaskKind
+    enum Mode {
+        case new(TaskKind)
+        case subtask(of: TaskItem)
+        case edit(TaskItem)
+    }
+    let mode: Mode
+
+    init(kind: TaskKind) { mode = .new(kind) }
+    init(mode: Mode) { self.mode = mode }
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
-    @State private var title = ""
-    @State private var minutes = 15
-    @State private var difficulty: Difficulty = .medium
-    @State private var anytime = true
-    @State private var dueDate = Date()
-    @State private var importance = 1
+    @State private var draft = TaskDraft()
+    @State private var loaded = false
     @State private var computingXP = false
     @State private var previewXP: Int?
+
+    private var editing: TaskItem? {
+        if case .edit(let t) = mode { return t } else { return nil }
+    }
+    private var parent: TaskItem? {
+        if case .subtask(let p) = mode { return p } else { return nil }
+    }
+    /// Only root tasks choose daily vs one-time; subtasks follow their root.
+    private var showsKind: Bool { parent == nil && editing?.parent == nil }
+
+    private var navTitle: String {
+        switch mode {
+        case .new(let k): return k == .daily ? "New Daily Task" : "New Task"
+        case .subtask: return "New Subtask"
+        case .edit(let t): return t.parent == nil ? "Edit Task" : "Edit Subtask"
+        }
+    }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Task") {
-                    TextField("What needs doing?", text: $title)
+                Section(parent.map { "Subtask of \($0.title)" } ?? "Task") {
+                    TextField("What needs doing?", text: $draft.title)
+                    if showsKind {
+                        Picker("Type", selection: $draft.kind) {
+                            Text("One-time").tag(TaskKind.oneTime)
+                            Text("Daily").tag(TaskKind.daily)
+                        }
+                        .pickerStyle(.segmented)
+                    }
                 }
 
                 Section("Time estimate") {
-                    Stepper("\(minutes) min", value: $minutes, in: 5...600, step: 5)
+                    Stepper("\(draft.minutes) min", value: $draft.minutes, in: 5...600, step: 5)
                 }
 
                 Section("Difficulty") {
-                    Picker("Difficulty", selection: $difficulty) {
+                    Picker("Difficulty", selection: $draft.difficulty) {
                         ForEach(Difficulty.allCases) { Text($0.label).tag($0) }
                     }
                     .pickerStyle(.segmented)
                 }
 
                 Section("Must be done by") {
-                    Toggle("Anytime", isOn: $anytime)
-                    if !anytime {
-                        DatePicker("Time", selection: $dueDate,
+                    Toggle("Anytime", isOn: $draft.anytime)
+                    if !draft.anytime {
+                        DatePicker("Time", selection: $draft.dueTime,
                                    displayedComponents: .hourAndMinute)
                     }
                 }
 
                 Section("Importance") {
-                    Stepper("Starting importance: \(importance)",
-                            value: $importance, in: 1...10)
+                    Stepper(editing == nil ? "Starting importance: \(draft.importance)"
+                                           : "Importance: \(draft.importance)",
+                            value: $draft.importance, in: 1...99)
                     Text("Rises automatically each day it's left unfinished.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Section("XP") {
-                    if let xp = previewXP {
+                    if let xp = previewXP ?? editing?.xp {
                         Label("+\(xp) XP", systemImage: "star.fill")
                             .foregroundStyle(.yellow)
                     }
-                    Button {
-                        Task { await computeXP() }
-                    } label: {
-                        HStack {
-                            Text("Calculate XP")
-                            if computingXP { Spacer(); ProgressView() }
+                    if editing?.isDone == true {
+                        Text("Already finished, so XP stays as awarded.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Button {
+                            Task { await computeXP() }
+                        } label: {
+                            HStack {
+                                Text("Calculate XP")
+                                if computingXP { Spacer(); ProgressView() }
+                            }
                         }
+                        .disabled(draft.trimmedTitle.isEmpty || computingXP)
                     }
-                    .disabled(title.isEmpty || computingXP)
                 }
             }
-            .navigationTitle(kind == .daily ? "New Daily Task" : "New Task")
+            .navigationTitle(navTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") { Task { await save() } }
-                        .disabled(title.isEmpty)
+                    Button(editing == nil ? "Add" : "Save") { Task { await save() } }
+                        .disabled(draft.trimmedTitle.isEmpty)
                 }
             }
+            .onAppear(perform: load)
         }
     }
 
-    private func dueClockMinutes() -> Int? {
-        guard !anytime else { return nil }
-        let c = Calendar.current.dateComponents([.hour, .minute], from: dueDate)
-        return (c.hour ?? 0) * 60 + (c.minute ?? 0)
+    private func load() {
+        guard !loaded else { return }
+        loaded = true
+        switch mode {
+        case .new(let k): draft = TaskDraft(kind: k)
+        case .subtask(let p): draft = TaskDraft(kind: p.kind)
+        case .edit(let t): draft = TaskDraft(task: t)
+        }
     }
 
-    private func service() -> LocalXPService { LocalXPService.shared }
+    private func estimate() async -> Int {
+        await LocalXPService.shared.estimateXP(
+            title: draft.trimmedTitle, difficulty: draft.difficulty,
+            timeEstimateMinutes: draft.minutes, importance: draft.importance)
+    }
 
     private func computeXP() async {
         computingXP = true
-        let xp = await service().estimateXP(
-            title: title, difficulty: difficulty,
-            timeEstimateMinutes: minutes, importance: importance)
-        previewXP = xp
+        previewXP = await estimate()
         computingXP = false
     }
 
     private func save() async {
-        let xp: Int
-        if let p = previewXP { xp = p }
-        else {
-            xp = await service().estimateXP(
-                title: title, difficulty: difficulty,
-                timeEstimateMinutes: minutes, importance: importance)
+        if let task = editing {
+            // Re-score XP only for unfinished tasks whose inputs changed
+            // (finished tasks already paid out their XP).
+            var newXP = previewXP
+            if newXP == nil, !task.isDone, draft.changesXPInputs(of: task) { newXP = await estimate() }
+            draft.apply(to: task)
+            if let newXP, !task.isDone { task.xp = newXP }
+            ActivityLog.task(.taskEdited, task, in: context)
+        } else {
+            let xp: Int
+            if let p = previewXP { xp = p } else { xp = await estimate() }
+            let task = draft.makeTask(xp: xp)
+            context.insert(task)
+            if let parent {
+                task.parent = parent
+                task.kindRaw = parent.kindRaw
+            }
+            ActivityLog.task(.taskCreated, task, in: context)
         }
-        let task = TaskItem(
-            title: title, kind: kind,
-            timeEstimateMinutes: minutes, difficulty: difficulty,
-            dueClockMinutes: dueClockMinutes(),
-            importance: importance, xp: xp)
-        context.insert(task)
-        ActivityLog.task(.taskCreated, task, in: context)
         try? context.save()
         dismiss()
     }
 }
+
+#Preview { AddTaskView(kind: .oneTime).previewEnv() }

@@ -16,24 +16,26 @@ struct TasksContent: View {
     @Environment(\.modelContext) private var context
     @Query private var allTasks: [TaskItem]
     @Query private var events: [CalendarEvent]
-    @State private var showingAdd = false
+    @State private var editor: TaskEditorRequest?
+    @State private var choosing: TaskItem?
 
-    /// Completed one-time tasks stay in the Completed column this long, then
-    /// drop off the screen (they stay saved for history / the AI coach).
-    private static let completedVisibleDays = 7
-
-    private var mine: [TaskItem] { allTasks.filter { $0.kindRaw == kind.rawValue } }
-
-    private var todo: [TaskItem] {
-        mine.filter { !$0.isDone }.sorted { $0.importance > $1.importance }
+    /// Root tasks of this list (subtasks render inside their root's card).
+    private var roots: [TaskItem] {
+        allTasks.filter { $0.kindRaw == kind.rawValue && $0.parent == nil }
     }
 
+    private var todo: [TaskItem] {
+        roots.filter { !$0.isSettledToday }.sorted { $0.importance > $1.importance }
+    }
+
+    /// Finished or done-for-now *today*. Anything finished on an earlier day
+    /// is cleared at midnight (and hidden here even before that runs).
     private var completed: [TaskItem] {
-        let cutoff = Calendar.current.date(byAdding: .day, value: -Self.completedVisibleDays,
-                                           to: Date()) ?? .distantPast
-        return mine
-            .filter { $0.isDone && ($0.completedAt ?? .distantFuture) >= cutoff }
-            .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+        let today = Calendar.current.startOfDay(for: Date())
+        return roots
+            .filter { $0.isDoneForNow || ($0.isDone && ($0.completedAt ?? today) >= today) }
+            .sorted { ($0.completedAt ?? $0.doneForNowAt ?? .distantPast)
+                    > ($1.completedAt ?? $1.doneForNowAt ?? .distantPast) }
     }
 
     var body: some View {
@@ -49,32 +51,53 @@ struct TasksContent: View {
                             ForEach(today) { CalendarTaskCard(item: $0) }
                         }
                     }
-                    ForEach(todo) { task in
-                        TaskCard(task: task) { toggle(task) } onDelete: { delete(task) }
-                    }
+                    ForEach(todo) { card($0) }
                 }
                 column("Completed", count: completed.count, id: "completed") {
-                    ForEach(completed) { task in
-                        TaskCard(task: task) { toggle(task) } onDelete: { delete(task) }
-                    }
+                    ForEach(completed) { card($0) }
                 }
             }
             .padding(.horizontal)
             .padding(.top, 12)
             .padding(.bottom, 30)
-            .animation(Motion.select, value: allTasks.map(\.isDone))
+            .animation(Motion.select, value: allTasks.map { "\($0.isDone)\($0.isDoneForNow)" })
         }
         .scrollContentBackground(.hidden)
         .nightBackground()
         .navigationTitle(navTitle)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showingAdd = true } label: { Image(systemName: "plus") }
+                Button { editor = .new(kind) } label: { Image(systemName: "plus") }
             }
         }
-        .sheet(isPresented: $showingAdd) {
-            AddTaskView(kind: kind)
+        .sheet(item: $editor) { request in
+            AddTaskView(mode: request.mode)
         }
+        .confirmationDialog(choosing?.title ?? "", isPresented: Binding(
+            get: { choosing != nil }, set: { if !$0 { choosing = nil } }),
+            titleVisibility: .visible, presenting: choosing) { task in
+            Button("Finished") { TaskActions.finish(task, context: context) }
+            Button("Done for now") { TaskActions.doneForNow(task, context: context) }
+            Button("Cancel", role: .cancel) {}
+        } message: { task in
+            Text(task.kind == .daily
+                 ? "Finished: earns XP, back tomorrow as a daily task.\nDone for now: back tomorrow, no XP yet."
+                 : "Finished: earns XP, cleared at midnight.\nDone for now: back tomorrow at the same importance.")
+        }
+    }
+
+    private func card(_ task: TaskItem) -> some View {
+        TaskCard(task: task,
+                 onTap: { tapped($0) },
+                 onEdit: { editor = .edit($0) },
+                 onAddSubtask: { editor = .subtask($0) },
+                 onDelete: { TaskActions.delete($0, context: context) })
+    }
+
+    /// To Do → ask Finished / Done for now. Already settled → undo.
+    private func tapped(_ task: TaskItem) {
+        if task.isSettledToday { TaskActions.reopen(task, context: context) }
+        else { choosing = task }
     }
 
     private func column<Content: View>(_ title: String, count: Int, id: String,
@@ -98,36 +121,27 @@ struct TasksContent: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("column.\(id)")
     }
+}
 
-    /// Tapping moves a task between columns. Un-completing takes the XP back
-    /// so tapping back and forth can't farm XP.
-    private func toggle(_ task: TaskItem) {
-        let profile = DailyMaintenance.profile(context: context)
-        if task.isDone {
-            task.isDone = false
-            task.completedAt = nil
-            profile.totalXP = max(0, profile.totalXP - task.xp)
-            ActivityLog.task(.taskUncompleted, task, in: context)
-        } else {
-            let now = Date()
-            task.isDone = true
-            task.completedAt = now
-            profile.totalXP += task.xp
-            var extra: [String: String] = [:]
-            if let due = task.dueClockMinutes {
-                let c = Calendar.current.dateComponents([.hour, .minute], from: now)
-                let nowMinutes = (c.hour ?? 0) * 60 + (c.minute ?? 0)
-                extra["minutes_vs_due"] = String(nowMinutes - due)   // negative = early
-            }
-            ActivityLog.task(.taskCompleted, task, at: now, extra: extra, in: context)
+/// Which task form to show.
+enum TaskEditorRequest: Identifiable {
+    case new(TaskKind)
+    case subtask(TaskItem)
+    case edit(TaskItem)
+
+    var id: String {
+        switch self {
+        case .new(let k): return "new-\(k.rawValue)"
+        case .subtask(let p): return "sub-\(p.id)"
+        case .edit(let t): return "edit-\(t.id)"
         }
-        try? context.save()
     }
-
-    private func delete(_ task: TaskItem) {
-        ActivityLog.task(.taskDeleted, task, in: context)
-        context.delete(task)
-        try? context.save()
+    var mode: AddTaskView.Mode {
+        switch self {
+        case .new(let k): return .new(k)
+        case .subtask(let p): return .subtask(of: p)
+        case .edit(let t): return .edit(t)
+        }
     }
 }
 
@@ -180,52 +194,87 @@ struct CalendarTaskCard: View {
     }
 }
 
-/// Compact task card sized for one of the two columns.
+/// Compact task card sized for one of the two columns. Holds the root task
+/// plus its subtasks (indented by level). Subtasks never leave this card.
 struct TaskCard: View {
     let task: TaskItem
-    let onToggle: () -> Void
-    let onDelete: () -> Void
+    let onTap: (TaskItem) -> Void
+    let onEdit: (TaskItem) -> Void
+    let onAddSubtask: (TaskItem) -> Void
+    let onDelete: (TaskItem) -> Void
 
     var body: some View {
-        Button(action: onToggle) {
-            HStack(alignment: .top, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
+            row(task, level: 0)
+            ForEach(task.flattenedSubtasks, id: \.task.id) { item in
+                row(item.task, level: item.level)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.Palette.nightRaised.opacity(0.5)))
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .stroke((task.isSettledToday ? Theme.Palette.goldDim : Theme.Palette.goldDim.opacity(0.4)), lineWidth: 0.5))
+    }
+
+    private func row(_ t: TaskItem, level: Int) -> some View {
+        Button { onTap(t) } label: {
+            HStack(alignment: .top, spacing: 6) {
+                if level > 0 {
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.caption2).foregroundStyle(Theme.Palette.goldDim)
+                }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(task.title)
-                        .font(.subheadline)
-                        .foregroundStyle(task.isDone ? Theme.Palette.boneDim : Theme.Palette.bone)
+                    Text(t.title)
+                        .font(level == 0 ? .subheadline : .caption)
+                        .foregroundStyle(t.isSettledToday ? Theme.Palette.boneDim : Theme.Palette.bone)
                         .multilineTextAlignment(.leading)
                         .lineLimit(3)
-                    Tag(text: "\(task.timeEstimateMinutes)m · +\(task.xp) XP", system: "star.fill")
-                    if !task.isDone && task.dueClockMinutes != nil {
-                        Tag(text: task.dueLabel, system: "clock")
+                    Tag(text: "\(t.timeEstimateMinutes)m · +\(t.xp) XP", system: "star.fill")
+                    if !t.isSettledToday && t.dueClockMinutes != nil {
+                        Tag(text: t.dueLabel, system: "clock")
                     }
-                    if !task.isDone && task.importance > 1 {
-                        Tag(text: "Importance \(task.importance)", system: "exclamationmark.triangle")
+                    if !t.isSettledToday && t.importance > 1 {
+                        Tag(text: "Importance \(t.importance)", system: "exclamationmark.triangle")
                             .foregroundStyle(.orange)
+                    }
+                    if t.isDoneForNow {
+                        Tag(text: "Back tomorrow", system: "hourglass")
                     }
                 }
                 Spacer(minLength: 0)
-                if task.isDone {
-                    // The same seal as the app logo.
-                    Image("SealCrest")
-                        .resizable().scaledToFit()
-                        .frame(width: 30, height: 30)
-                        .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
-                        .accessibilityIdentifier("completedSeal")
-                }
+                marker(t, size: level == 0 ? 30 : 20)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Theme.Palette.nightRaised.opacity(0.5)))
-            .overlay(RoundedRectangle(cornerRadius: 10)
-                .stroke((task.isDone ? Theme.Palette.goldDim : Theme.Palette.goldDim.opacity(0.4)), lineWidth: 0.5))
+            .padding(.leading, CGFloat(max(0, level - 1)) * 10)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .pressScale()
         .contextMenu {
-            Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+            Button { onEdit(t) } label: { Label("Edit", systemImage: "pencil") }
+            if t.canAddSubtask {
+                Button { onAddSubtask(t) } label: { Label("Add subtask", systemImage: "plus.square.on.square") }
+            }
+            Button(role: .destructive) { onDelete(t) } label: { Label("Delete", systemImage: "trash") }
         }
-        .accessibilityIdentifier("task.\(task.title)")
+        .accessibilityIdentifier("task.\(t.title)")
+    }
+
+    @ViewBuilder
+    private func marker(_ t: TaskItem, size: CGFloat) -> some View {
+        if t.isDone {
+            // The same seal as the app logo.
+            Image("SealCrest")
+                .resizable().scaledToFit()
+                .frame(width: size, height: size)
+                .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
+                .accessibilityIdentifier("completedSeal")
+        } else if t.isDoneForNow {
+            Image(systemName: "hourglass")
+                .font(.system(size: size * 0.6))
+                .foregroundStyle(Theme.Palette.gold)
+                .frame(width: size, height: size)
+                .accessibilityIdentifier("doneForNowMark")
+        }
     }
 }
 

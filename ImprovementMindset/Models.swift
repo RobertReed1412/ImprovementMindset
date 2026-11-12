@@ -53,6 +53,16 @@ final class TaskItem {
     // functionality pass; optional so existing rows migrate untouched.
     var completedAt: Date?
 
+    // "Done for now": worked on today, comes back to To Do tomorrow at the
+    // same importance. nil = not set. Only counts on the day it was set.
+    var doneForNowAt: Date?
+
+    // Subtasks: up to `maxSubtaskDepth` levels under a root task. A subtask
+    // always stays with its root (deleting the root deletes its subtasks).
+    var parent: TaskItem?
+    @Relationship(deleteRule: .cascade, inverse: \TaskItem.parent)
+    var subtasks: [TaskItem]? = []
+
     init(title: String,
          kind: TaskKind,
          timeEstimateMinutes: Int = 15,
@@ -77,6 +87,36 @@ final class TaskItem {
     }
 
     var kind: TaskKind { TaskKind(rawValue: kindRaw) ?? .daily }
+
+    static let maxSubtaskDepth = 3
+
+    /// 0 for a root task, 1 for its subtask, and so on.
+    var depth: Int {
+        var d = 0
+        var p = parent
+        while let next = p { d += 1; p = next.parent }
+        return d
+    }
+    var canAddSubtask: Bool { depth < Self.maxSubtaskDepth }
+
+    var isDoneForNow: Bool {
+        guard let d = doneForNowAt else { return false }
+        return Calendar.current.isDateInToday(d)
+    }
+
+    /// Finished, or done for now: shown with a completed marker.
+    var isSettledToday: Bool { isDone || isDoneForNow }
+
+    var orderedSubtasks: [TaskItem] {
+        (subtasks ?? []).sorted { $0.createdAt < $1.createdAt }
+    }
+
+    /// Every descendant, depth-first, with its level (1...3).
+    var flattenedSubtasks: [(task: TaskItem, level: Int)] {
+        orderedSubtasks.flatMap { child in
+            [(child, child.depth)] + child.flattenedSubtasks
+        }
+    }
     var difficulty: Difficulty { Difficulty(rawValue: difficultyRaw) ?? .medium }
 
     var dueLabel: String {
