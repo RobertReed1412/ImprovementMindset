@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 /// Launch flags. UI tests pass `-uiTesting` for a clean in-memory store
 /// and no splash delay.
@@ -22,6 +23,7 @@ struct ImprovementMindsetApp: App {
             fatalError("Could not create ModelContainer: \(error)")
         }
         configureAppearance()
+        UNUserNotificationCenter.current().delegate = ForegroundNotificationPresenter.shared
     }
 
     private func configureAppearance() {
@@ -78,6 +80,7 @@ struct RootView: View {
         }
         .onAppear {
             DailyMaintenance.run(context: context)
+            Task { await EventReminders.reschedule(context: context) }
             Task { await LocalXPService.shared.ensureLoaded() }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
                 withAnimation(.easeOut(duration: 0.5)) { showLaunch = false }
@@ -102,7 +105,10 @@ struct RootView: View {
         .tint(Theme.Palette.gold)
         .preferredColorScheme(.dark)
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { DailyMaintenance.run(context: context) }
+            if phase == .active {
+                DailyMaintenance.run(context: context)
+                Task { await EventReminders.reschedule(context: context) }
+            }
         }
     }
 }

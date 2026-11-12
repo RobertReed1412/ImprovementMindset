@@ -96,7 +96,19 @@ struct AddEventView: View {
             notes: notes,
             recurrenceEndDate: (recurrence != .none && hasEnd) ? endDate : nil)
         context.insert(event)
+        ActivityLog.record(.eventCreated, area: .calendar, entityID: event.id,
+                           title: event.title, at: Date(),
+                           metadata: ["start": event.startDate.formatted(.iso8601),
+                                      "recurrence": event.recurrenceRaw,
+                                      "duration_minutes": String(event.durationMinutes)],
+                           in: context)
         try? context.save()
+        // Ask for notification permission at the moment it's useful (first
+        // event saved), then rebuild the reminder schedule.
+        Task {
+            await EventReminders.requestPermissionIfNeeded()
+            await EventReminders.reschedule(context: context)
+        }
         dismiss()
     }
 }

@@ -160,8 +160,11 @@ struct CalendarContent: View {
     }
 
     private func delete(_ ev: CalendarEvent) {
+        ActivityLog.record(.eventDeleted, area: .calendar, entityID: ev.id,
+                           title: ev.title, in: context)
         context.delete(ev)
         try? context.save()
+        Task { await EventReminders.reschedule(context: context) }
     }
 }
 
