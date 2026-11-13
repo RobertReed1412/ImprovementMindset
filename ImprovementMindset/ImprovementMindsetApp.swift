@@ -23,6 +23,9 @@ struct ImprovementMindsetApp: App {
             fatalError("Could not create ModelContainer: \(error)")
         }
         configureAppearance()
+        // UI tests wait for every transition to settle; skipping animations
+        // makes them faster and less timing-sensitive. Never affects real use.
+        if AppLaunch.isUITesting { UIView.setAnimationsEnabled(false) }
         UNUserNotificationCenter.current().delegate = ForegroundNotificationPresenter.shared
     }
 

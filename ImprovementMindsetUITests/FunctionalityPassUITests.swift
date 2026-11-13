@@ -22,6 +22,14 @@ final class FunctionalityPassUITests: XCTestCase {
         field.typeText(text)
     }
 
+    /// Waits only as long as the splash actually shows (instead of a fixed sleep).
+    private func waitPastSplash() {
+        let tab = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 10))
+        let hittable = expectation(for: NSPredicate(format: "isHittable == true"), evaluatedWith: tab)
+        wait(for: [hittable], timeout: 10)
+    }
+
     private func snap(_ name: String) {
         let a = XCTAttachment(screenshot: app.screenshot())
         a.name = name
@@ -218,7 +226,7 @@ final class FunctionalityPassUITests: XCTestCase {
     func testHomeLayoutPersistsAcrossLaunches() {
         app.launchArguments = []
         app.launch()
-        sleep(3)   // splash
+        waitPastSplash()
         app.tabBars.buttons["Settings"].tap()
         app.buttons["settings.editHome"].tap()
         app.buttons["Reset to default"].tap()
@@ -227,7 +235,7 @@ final class FunctionalityPassUITests: XCTestCase {
 
         app.terminate()
         app.launch()
-        sleep(3)   // splash
+        waitPastSplash()
         XCTAssertTrue(app.textFields["quickTask.field"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.textFields["quickNote.field"].exists, "layout persisted")
 
