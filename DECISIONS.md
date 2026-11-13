@@ -198,6 +198,25 @@ Simplest reading of the spec. A lead-time setting is an easy follow-up.
 
 ---
 
+## Testing speed and the learning trail (2026-11-12)
+
+**UI tests run with animations off (`-uiTesting` only) and wait for the splash instead of `sleep(3)`.**
+Alternatives: leave as is; add more simulators.
+Why: measured total UI test time went from 271s to 212s, and the full sweep from 310s to 253s.
+XCUITest waits for every animation, and fixed sleeps waste time on fast runs. Real app
+launches never pass `-uiTesting`, so normal use is unchanged. Two simulators in parallel
+were measured slower on this 8 GB Mac (372s versus 292s).
+
+**`.agent-test.conf` added** so the agent test runner (`agent-hq/plugins/dev/scripts/ios-test.sh`)
+knows this project's simulator, the slow Xcode template tests to skip, and the permission
+reset the notification test needs. The full reasoning behind the runner is in
+`agent-hq/DECISIONS.md`.
+
+**`HOW_IT_WORKS.md` added:** a plain-language map of the app (parts, task flow, testing,
+glossary) so the code can be understood later without an agent.
+
+---
+
 ## Part 2: Accountability groups (plan) → `docs/PART2_ACCOUNTABILITY_GROUPS.md`
 
 **Server decides the reveal (pg_cron every minute), not phones.**
